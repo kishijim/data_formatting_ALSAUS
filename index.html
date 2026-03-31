@@ -1,0 +1,1392 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Excel統合・エリア分割ツール</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- React & ReactDOM -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  
+  <!-- Babel -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <!-- SheetJS (Excel処理) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <!-- JSZip & FileSaver (ZIP圧縮・保存処理) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans min-h-screen">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo } = React;
+
+    // --- アイコンコンポーネント ---
+    const UploadCloud = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m16 16-4-4-4 4"/></svg>);
+    const ArrowUp = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>);
+    const ArrowDown = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>);
+    const X = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>);
+    const Play = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>);
+    const FileSpreadsheet = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h2"/><path d="M8 17h2"/><path d="M14 13h2"/><path d="M14 17h2"/></svg>);
+    const Download = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>);
+    const AlertCircle = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>);
+    const CheckCircle2 = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>);
+    const TableProperties = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3v18"/><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M21 9H3"/><path d="M21 15H3"/></svg>);
+    const FileArchive = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="15" cy="15" r="2"/><path d="M4 22V4c0-.5.2-1 .6-1.4C5 2.2 5.5 2 6 2h8.5L20 7.5V20c0 .5-.2 1-.6 1.4-.4.4-.9.6-1.4.6h-2"/><path d="M14 2v6h6"/><path d="M10 20v-5.5c0-.3.2-.5.5-.5h2c.3 0 .5.2.5.5V20"/><path d="M10 10V4"/><path d="M10 14v-1"/></svg>);
+    const Eye = ({ className }) => (<svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>);
+
+    // ファイル読み込みのPromise化
+    const readFileAsArrayBuffer = (file) => {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result);
+        reader.onerror = (e) => reject(e);
+        reader.readAsArrayBuffer(file);
+      });
+    };
+
+    function App() {
+      const [files, setFiles] = useState([]);
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState('');
+      const [successMsg, setSuccessMsg] = useState('');
+      
+      // 結合後のデータ
+      const [mergedHeaders, setMergedHeaders] = useState([]);
+      const [mergedData, setMergedData] = useState([]);
+      
+      // 分割用ステート
+      const [selectedSplitCol, setSelectedSplitCol] = useState('');
+      const [isSplitting, setIsSplitting] = useState(false);
+      const [showSplitPreview, setShowSplitPreview] = useState(false);
+      const [splitMappings, setSplitMappings] = useState([]);
+
+      // 欠陥データ（エラー値）確認用の状態
+      const [defectSummary, setDefectSummary] = useState(null);
+      const [pendingDefectsData, setPendingDefectsData] = useState(null);
+      const [defectList, setDefectList] = useState([]);
+
+      // 空白セル確認用の状態
+      const [blankCellsSummary, setBlankCellsSummary] = useState(null);
+      const [pendingBlanksData, setPendingBlanksData] = useState(null);
+      const [blankRepairMethod, setBlankRepairMethod] = useState('ignore'); // 'ignore', 'delete', 'fill'
+      const [blankCustomText, setBlankCustomText] = useState('');
+
+      // ノイズ確認用の状態
+      const [noiseCandidates, setNoiseCandidates] = useState([]);
+      const [pendingFilesData, setPendingFilesData] = useState(null);
+
+      // ヘッダー不一致確認用の状態
+      const [headerConflicts, setHeaderConflicts] = useState([]);
+      const [pendingMergeData, setPendingMergeData] = useState(null);
+
+      // 分割の候補となる列を抽出する（数字だけ、nだけの列を除外）
+      const splitCandidates = useMemo(() => {
+        if (mergedData.length === 0 || mergedHeaders.length === 0) return [];
+        
+        const candidates = [];
+        
+        for (let c = 0; c < mergedHeaders.length; c++) {
+          let hasNonNumericOrN = false;
+          let hasValidData = false;
+          
+          for (let r = 0; r < mergedData.length; r++) {
+            const val = mergedData[r][c];
+            if (val === null || val === undefined || val === '') continue;
+            
+            hasValidData = true;
+            const strVal = String(val).trim();
+            
+            // 数字(小数・負数含む)かどうかの判定
+            const isNumber = /^-?\d+(\.\d+)?$/.test(strVal);
+            // 'n' または 'N' かどうかの判定
+            const isN = strVal.toLowerCase() === 'n';
+            
+            if (!isNumber && !isN) {
+              hasNonNumericOrN = true;
+              break; 
+            }
+          }
+          
+          if (hasValidData && hasNonNumericOrN) {
+            candidates.push({ index: c, name: mergedHeaders[c] });
+          }
+        }
+        
+        return candidates;
+      }, [mergedData, mergedHeaders]);
+
+      useEffect(() => {
+        if (splitCandidates.length > 0) {
+          if (!splitCandidates.find(c => c.index.toString() === selectedSplitCol)) {
+            setSelectedSplitCol(splitCandidates[0].index.toString());
+          }
+        } else {
+          setSelectedSplitCol('');
+        }
+      }, [splitCandidates]);
+
+      const handleFileChange = (e) => {
+        if (e.target.files && e.target.files.length > 0) {
+          const newFiles = Array.from(e.target.files);
+          setFiles((prev) => [...prev, ...newFiles]);
+          setError('');
+          setSuccessMsg('');
+        }
+      };
+
+      const moveFile = (index, direction) => {
+        const newFiles = [...files];
+        if (direction === 'up' && index > 0) {
+          [newFiles[index - 1], newFiles[index]] = [newFiles[index], newFiles[index - 1]];
+        } else if (direction === 'down' && index < newFiles.length - 1) {
+          [newFiles[index + 1], newFiles[index]] = [newFiles[index], newFiles[index + 1]];
+        }
+        setFiles(newFiles);
+      };
+
+      const removeFile = (index) => {
+        setFiles(files.filter((_, i) => i !== index));
+        setError('');
+        setSuccessMsg('');
+      };
+
+      const clearAllFiles = () => {
+        setFiles([]);
+        setError('');
+        setSuccessMsg('');
+        setMergedData([]);
+        setMergedHeaders([]);
+        setNoiseCandidates([]);
+        setPendingFilesData(null);
+        setHeaderConflicts([]);
+        setPendingMergeData(null);
+        setSelectedSplitCol('');
+        setShowSplitPreview(false);
+        setSplitMappings([]);
+        setDefectList([]);
+      };
+
+      // 1. ファイルの読み込みとノイズチェック
+      const processFiles = async () => {
+        setLoading(true);
+        setError('');
+        setSuccessMsg('');
+        setMergedData([]);
+        setMergedHeaders([]);
+        setHeaderConflicts([]);
+        
+        try {
+          if (!window.XLSX) throw new Error("Excel処理ライブラリが見つかりません。");
+          if (files.length === 0) throw new Error("結合するファイルを選択してください。");
+
+          const analyzedFiles = [];
+          const foundNoises = [];
+
+          for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            const data = await readFileAsArrayBuffer(file);
+            const workbook = window.XLSX.read(data, { type: 'array', cellDates: true });
+            
+            const firstSheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[firstSheetName];
+            const rawSheetData = window.XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: null });
+
+            if (rawSheetData.length === 0) continue;
+
+            let maxCols = 0;
+            rawSheetData.forEach(row => {
+              if (row && row.length > maxCols) maxCols = row.length;
+            });
+
+            const validColIndices = [];
+            for (let c = 0; c < maxCols; c++) {
+              let isAllEmpty = true;
+              for (let r = 0; r < rawSheetData.length; r++) {
+                const cell = rawSheetData[r] ? rawSheetData[r][c] : null;
+                if (cell !== null && cell !== undefined && String(cell).trim() !== '') {
+                  isAllEmpty = false;
+                  break;
+                }
+              }
+              if (!isAllEmpty) {
+                validColIndices.push(c);
+              }
+            }
+
+            const sheetData = rawSheetData.map(row => {
+              if (!row) return [];
+              return validColIndices.map(c => {
+                let cellVal = row[c] !== undefined ? row[c] : null;
+                
+                if (cellVal instanceof Date) {
+                  const y = cellVal.getFullYear();
+                  const m = cellVal.getMonth() + 1;
+                  const d = cellVal.getDate();
+                  const h = cellVal.getHours();
+                  const min = cellVal.getMinutes();
+                  
+                  if (h === 0 && min === 0) {
+                    cellVal = `${y}/${m}/${d}`;
+                  } else {
+                    cellVal = `${y}/${m}/${d} ${h.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}`;
+                  }
+                }
+                
+                return cellVal;
+              });
+            });
+
+            if (sheetData.length === 0 || sheetData[0].length === 0) continue;
+
+            const headers = sheetData[0];
+            for (let c = 0; c < headers.length; c++) {
+              const headerVal = headers[c] ? String(headers[c]).trim() : '';
+              if (headerVal === '') {
+                const valuesInCol = [];
+                for (let r = 1; r < sheetData.length; r++) {
+                  const cellVal = sheetData[r] ? sheetData[r][c] : null;
+                  if (cellVal !== null && cellVal !== undefined && String(cellVal).trim() !== '') {
+                    valuesInCol.push(String(cellVal));
+                  }
+                }
+                if (valuesInCol.length === 1 || valuesInCol.length === 2) {
+                   foundNoises.push({
+                     fileIndex: i,
+                     fileName: file.name,
+                     colIndex: c,
+                     values: valuesInCol,
+                     exclude: true
+                   });
+                }
+              }
+            }
+
+            analyzedFiles.push({ file, sheetData });
+          }
+
+          if (foundNoises.length > 0) {
+            setNoiseCandidates(foundNoises);
+            setPendingFilesData(analyzedFiles);
+            setLoading(false); 
+            return;
+          }
+
+          checkHeaderConflicts(analyzedFiles);
+          
+        } catch (err) {
+          setError(err.message);
+          setLoading(false);
+        }
+      };
+
+      const cancelMerge = () => {
+        setNoiseCandidates([]);
+        setPendingFilesData(null);
+        setLoading(false);
+      };
+
+      const toggleNoiseExclude = (index) => {
+        setNoiseCandidates(prev => {
+          const next = [...prev];
+          next[index].exclude = !next[index].exclude;
+          return next;
+        });
+      };
+
+      const continueMerge = () => {
+        const cleanedFilesData = pendingFilesData.map((fileData, fIdx) => {
+          const noisesToExclude = noiseCandidates.filter(n => n.fileIndex === fIdx && n.exclude);
+          if (noisesToExclude.length === 0) return fileData;
+          
+          const excludeColIndices = noisesToExclude.map(n => n.colIndex);
+          const newSheetData = fileData.sheetData.map(row => {
+            return row.filter((_, cIdx) => !excludeColIndices.includes(cIdx));
+          });
+          
+          return { ...fileData, sheetData: newSheetData };
+        });
+
+        setNoiseCandidates([]);
+        setPendingFilesData(null);
+        checkHeaderConflicts(cleanedFilesData);
+      };
+
+      // 2. ヘッダー名の不一致判定
+      const checkHeaderConflicts = (filesData) => {
+        let maxCols = 0;
+        filesData.forEach(f => {
+          if (f.sheetData[0] && f.sheetData[0].length > maxCols) {
+            maxCols = f.sheetData[0].length;
+          }
+        });
+
+        const conflicts = [];
+        const baseHeaders = [];
+
+        const normalizeHeader = (str) => {
+          if (str === null || str === undefined) return '';
+          return String(str).replace(/[\s　]/g, '').replace(/（/g, '(').replace(/）/g, ')');
+        };
+
+        for (let c = 0; c < maxCols; c++) {
+          const headerVariations = new Map();
+          const fileHeaders = [];
+
+          filesData.forEach((f, fIdx) => {
+            const hName = (f.sheetData[0] && f.sheetData[0][c] !== undefined) ? String(f.sheetData[0][c]).trim() : '';
+            const normName = normalizeHeader(hName);
+            
+            fileHeaders.push({
+              fileIndex: fIdx,
+              fileName: f.file.name,
+              headerName: hName,
+              normName: normName
+            });
+
+            if (!headerVariations.has(normName)) {
+              headerVariations.set(normName, { originalName: hName, files: [fIdx] });
+            } else {
+              headerVariations.get(normName).files.push(fIdx);
+            }
+          });
+
+          if (headerVariations.size > 1) {
+            const isAllEmpty = Array.from(headerVariations.keys()).every(k => k === '');
+            if (!isAllEmpty) {
+              const uniqueOriginalNames = Array.from(headerVariations.values())
+                                              .map(v => v.originalName)
+                                              .filter(name => name !== '');
+              
+              let initialSelected = fileHeaders[0].headerName;
+              if (!initialSelected && uniqueOriginalNames.length > 0) {
+                initialSelected = uniqueOriginalNames[0];
+              }
+              if (!initialSelected) initialSelected = '';
+
+              const actions = {};
+              filesData.forEach((_, fIdx) => { actions[fIdx] = 'merge'; });
+
+              conflicts.push({
+                colIndex: c,
+                originalNames: uniqueOriginalNames,
+                fileHeaders: fileHeaders,
+                selectedHeader: initialSelected,
+                actions: actions
+              });
+            }
+            baseHeaders.push(fileHeaders[0].headerName || '');
+          } else {
+            baseHeaders.push(headerVariations.values().next().value.originalName);
+          }
+        }
+
+        if (conflicts.length > 0) {
+          setHeaderConflicts(conflicts);
+          setPendingMergeData({ filesData, baseHeaders, maxCols });
+          setLoading(false);
+        } else {
+          executeFinalMerge(filesData, baseHeaders, maxCols, []);
+        }
+      };
+
+      const updateConflictHeader = (conflictIndex, newHeaderName) => {
+        setHeaderConflicts(prev => {
+          const next = [...prev];
+          next[conflictIndex].selectedHeader = newHeaderName;
+          return next;
+        });
+      };
+
+      const updateConflictAction = (conflictIndex, fileIndex, newAction) => {
+        setHeaderConflicts(prev => {
+          const next = [...prev];
+          next[conflictIndex].actions[fileIndex] = newAction;
+          return next;
+        });
+      };
+
+      const confirmHeaderConflicts = () => {
+        const { filesData, baseHeaders, maxCols } = pendingMergeData;
+        setHeaderConflicts([]);
+        setPendingMergeData(null);
+        executeFinalMerge(filesData, baseHeaders, maxCols, headerConflicts);
+      };
+
+      const cancelHeaderConflicts = () => {
+        setHeaderConflicts([]);
+        setPendingMergeData(null);
+        setLoading(false);
+      };
+
+      // 結合完了時の共通処理
+      const finishMerge = (headers, data, isSingleFile, fileCount) => {
+        setMergedHeaders(headers);
+        setMergedData(data);
+        
+        if (isSingleFile) {
+          setSuccessMsg(`1つのファイルが選択されています。統合を行わずに読み込みを完了しました。列の値での分割が可能です。`);
+        } else {
+          setSuccessMsg(`結合完了: ${fileCount}個のファイルを結合し、${data.length}行のデータを生成しました。`);
+        }
+        setLoading(false);
+      };
+
+      const EXCEL_ERRORS = ['#N/A', '#VALUE!', '#REF!', '#DIV/0!', '#NUM!', '#NAME?', '#NULL!'];
+
+      // 許容される空欄かどうかを判定するヘルパー関数
+      const isBlankCell = (cell) => cell === null || cell === undefined || String(cell).trim() === '';
+
+      const hasActionableBlank = (row, headers) => {
+        const stayColIdx = headers.findIndex(h => String(h).includes('滞在人数'));
+        const noticeColIdx = headers.findIndex(h => String(h).includes('その他特徴的な利用'));
+
+        // 滞在人数が n (または N) の場合は、他の列が空欄でも許容（エラーにしない）
+        if (stayColIdx !== -1) {
+          const stayVal = row[stayColIdx];
+          if (stayVal !== null && stayVal !== undefined && String(stayVal).trim().toLowerCase() === 'n') {
+            return false; 
+          }
+        }
+
+        // それ以外の行は、特定の列（その他特徴的〜）以外の空欄を探す
+        for (let c = 0; c < row.length; c++) {
+          if (c === noticeColIdx) continue; // この列の空欄は許容
+          if (isBlankCell(row[c])) {
+            return true; // 修復が必要な空欄を発見
+          }
+        }
+        return false;
+      };
+
+      // 空白セルのチェック処理
+      const checkBlankCells = (finalExportHeaders, allData, isSingleFile, filesDataCount) => {
+        const rowsWithBlanks = [];
+        
+        allData.forEach((row, rowIndex) => {
+          if (hasActionableBlank(row, finalExportHeaders)) {
+            rowsWithBlanks.push({ rowIndex, rowData: [...row] });
+          }
+        });
+
+        if (rowsWithBlanks.length > 0) {
+          setBlankCellsSummary({
+            count: rowsWithBlanks.length,
+            previewRows: rowsWithBlanks.slice(0, 5) // 最初の5件をプレビュー表示
+          });
+          setPendingBlanksData({ finalExportHeaders, allData, isSingleFile, filesDataCount });
+          setLoading(false);
+        } else {
+          finishMerge(finalExportHeaders, allData, isSingleFile, filesDataCount);
+        }
+      };
+
+      // 空白セルの処理適用
+      const applyBlankRepair = () => {
+        setLoading(true);
+        const { finalExportHeaders, allData, isSingleFile, filesDataCount } = pendingBlanksData;
+        let finalData = allData;
+
+        const stayColIdx = finalExportHeaders.findIndex(h => String(h).includes('滞在人数'));
+        const noticeColIdx = finalExportHeaders.findIndex(h => String(h).includes('その他特徴的な利用'));
+
+        if (blankRepairMethod === 'delete') {
+          finalData = allData.filter(row => !hasActionableBlank(row, finalExportHeaders));
+        } else if (blankRepairMethod === 'fill') {
+          finalData = allData.map(row => {
+            // 滞在人数がnの行はそのままスキップ
+            if (stayColIdx !== -1) {
+               const stayVal = row[stayColIdx];
+               if (stayVal !== null && stayVal !== undefined && String(stayVal).trim().toLowerCase() === 'n') {
+                 return row;
+               }
+            }
+
+            return row.map((cell, cIdx) => {
+              if (cIdx === noticeColIdx) return cell; // この列は埋めない
+              if (isBlankCell(cell)) {
+                return blankCustomText;
+              }
+              return cell;
+            });
+          });
+        }
+
+        setBlankCellsSummary(null);
+        setPendingBlanksData(null);
+        finishMerge(finalExportHeaders, finalData, isSingleFile, filesDataCount);
+      };
+
+      const cancelBlankRepair = () => {
+        setBlankCellsSummary(null);
+        setPendingBlanksData(null);
+        setLoading(false);
+      };
+
+      // 欠陥データの修復適用
+      const applyDefectRepair = () => {
+        setLoading(true);
+        const { finalExportHeaders, allData, isSingleFile, filesDataCount } = pendingDefectsData;
+        
+        defectList.forEach(defect => {
+          if (defect.action === 'empty') {
+            allData[defect.rIdx][defect.cIdx] = null;
+          } else if (defect.action === 'custom') {
+            allData[defect.rIdx][defect.cIdx] = defect.customValue;
+          }
+          // 'ignore' の場合は何もしない
+        });
+        
+        setDefectSummary(null);
+        setPendingDefectsData(null);
+        setDefectList([]);
+        // エラー修復後、空白セルのチェックへ移行
+        checkBlankCells(finalExportHeaders, allData, isSingleFile, filesDataCount);
+      };
+
+      const cancelDefectRepair = () => {
+        setDefectSummary(null);
+        setPendingDefectsData(null);
+        setDefectList([]);
+        setLoading(false);
+      };
+
+      const applyBulkDefectAction = (actionType) => {
+        setDefectList(prev => prev.map(item => ({ ...item, action: actionType })));
+      };
+
+      // 3. 結合実行
+      const executeFinalMerge = (filesData, baseHeaders, maxCols, resolvedConflicts) => {
+        setLoading(true);
+        try {
+          const finalHeaders = [...baseHeaders];
+          resolvedConflicts.forEach(conf => {
+            finalHeaders[conf.colIndex] = conf.selectedHeader;
+          });
+
+          const isSingleFile = filesData.length === 1;
+          const finalExportHeaders = isSingleFile ? [...finalHeaders] : ['期間', ...finalHeaders];
+          const allData = [];
+
+          filesData.forEach((fileData, fIdx) => {
+            const { file, sheetData } = fileData;
+            
+            for (let r = 1; r < sheetData.length; r++) {
+              const row = sheetData[r];
+              if (!row || row.length === 0 || row.every(cell => cell === null || cell === '')) continue;
+              
+              const paddedRow = [];
+              let hasValidData = false;
+
+              for (let c = 0; c < maxCols; c++) {
+                const conflict = resolvedConflicts.find(conf => conf.colIndex === c);
+                if (conflict && conflict.actions[fIdx] === 'ignore') {
+                  paddedRow.push(null);
+                } else {
+                  const cellVal = row[c] !== undefined ? row[c] : null;
+                  paddedRow.push(cellVal);
+                  if (cellVal !== null && cellVal !== '') {
+                    hasValidData = true;
+                  }
+                }
+              }
+              
+              if (hasValidData) {
+                if (isSingleFile) {
+                  allData.push([...paddedRow]);
+                } else {
+                  allData.push([file.name, ...paddedRow]);
+                }
+              }
+            }
+          });
+
+          // 欠陥データ（エラー値）のスキャン
+          const newDefectList = [];
+
+          allData.forEach((row, rIdx) => {
+            row.forEach((cell, cIdx) => {
+              if (typeof cell === 'string' && EXCEL_ERRORS.includes(cell.toUpperCase())) {
+                const fileName = isSingleFile ? '単一ファイル' : row[0];
+                newDefectList.push({
+                  id: `${rIdx}-${cIdx}`,
+                  rIdx,
+                  cIdx,
+                  fileName,
+                  colName: finalExportHeaders[cIdx],
+                  errorValue: cell,
+                  action: 'empty', // default
+                  customValue: ''
+                });
+              }
+            });
+          });
+
+          if (newDefectList.length > 0) {
+            setDefectSummary({ count: newDefectList.length });
+            setPendingDefectsData({ finalExportHeaders, allData, isSingleFile, filesDataCount: filesData.length });
+            setDefectList(newDefectList);
+            setLoading(false);
+            return; // モーダルを表示して待機
+          }
+
+          // エラーがなければ空白セルのチェックへ
+          checkBlankCells(finalExportHeaders, allData, isSingleFile, filesData.length);
+        } catch (err) {
+          setError(err.message);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      // 4. 一括ダウンロード
+      const exportExcel = () => {
+        if (!window.XLSX || mergedData.length === 0) return;
+        const ws = window.XLSX.utils.aoa_to_sheet([mergedHeaders, ...mergedData]);
+        const wb = window.XLSX.utils.book_new();
+        window.XLSX.utils.book_append_sheet(wb, ws, "統合データ");
+        window.XLSX.writeFile(wb, "merged_files.xlsx");
+      };
+
+      // 5. 分割の準備（プレビュー表示）
+      const prepareSplit = () => {
+        const colIdx = parseInt(selectedSplitCol, 10);
+        if (isNaN(colIdx)) return;
+
+        const mappings = new Map();
+        
+        mergedData.forEach(row => {
+          const keyVal = row[colIdx];
+          const keyStr = (keyVal === null || keyVal === undefined || keyVal === '') ? '未分類' : String(keyVal);
+          
+          if (!mappings.has(keyStr)) {
+            // デフォルトの出力ファイル名はファイルに使えない文字を置換したもの
+            let safeKey = keyStr.replace(/[\\/:*?"<>|]/g, '_');
+            if (!safeKey.trim()) safeKey = '未分類';
+            // initialName を保持してプルダウンの選択肢作成に利用
+            mappings.set(keyStr, { originalValue: keyStr, outputName: safeKey, initialName: safeKey, count: 1 });
+          } else {
+            const entry = mappings.get(keyStr);
+            entry.count += 1;
+          }
+        });
+
+        // 件数が多い順にソートしてステートにセット
+        const sortedMappings = Array.from(mappings.values()).sort((a, b) => b.count - a.count);
+        setSplitMappings(sortedMappings);
+        setShowSplitPreview(true);
+      };
+
+      // プルダウンの選択肢（存在する値のリスト）を生成
+      const availableSplitOptions = useMemo(() => {
+        const opts = new Set();
+        splitMappings.forEach(m => {
+          if (m.initialName) opts.add(m.initialName);
+        });
+        return Array.from(opts).sort(); // アルファベット順などにソート
+      }, [splitMappings]);
+
+      // 分割マッピングの出力名更新
+      const updateOutputName = (index, newName) => {
+        setSplitMappings(prev => {
+          const next = [...prev];
+          next[index].outputName = newName;
+          return next;
+        });
+      };
+
+      // 6. 分割実行（ZIPダウンロード）
+      const executeSplitExport = async () => {
+        setIsSplitting(true);
+        try {
+          const colIdx = parseInt(selectedSplitCol, 10);
+          const valToOutput = new Map();
+          
+          // ユーザーが設定したマッピングをMapに変換
+          splitMappings.forEach(m => {
+             // 万が一空欄にされた場合のフォールバック
+            let safeName = m.outputName.trim().replace(/[\\/:*?"<>|]/g, '_');
+            if (!safeName) safeName = '名称未設定';
+            valToOutput.set(m.originalValue, safeName);
+          });
+
+          // 出力ファイル名ごとにデータをグループ化
+          const groups = {};
+          mergedData.forEach(row => {
+            const keyVal = row[colIdx];
+            const keyStr = (keyVal === null || keyVal === undefined || keyVal === '') ? '未分類' : String(keyVal);
+            
+            const outputName = valToOutput.get(keyStr) || '未分類';
+
+            if (!groups[outputName]) {
+              groups[outputName] = [];
+            }
+            groups[outputName].push(row);
+          });
+
+          // 各グループごとにExcelファイルを作成してダウンロード
+          const entries = Object.entries(groups);
+          for (let i = 0; i < entries.length; i++) {
+            const [outName, rows] = entries[i];
+            const ws = window.XLSX.utils.aoa_to_sheet([mergedHeaders, ...rows]);
+            const wb = window.XLSX.utils.book_new();
+            window.XLSX.utils.book_append_sheet(wb, ws, "データ");
+            
+            // ファイルを直接ダウンロード
+            window.XLSX.writeFile(wb, `${outName}.xlsx`);
+            
+            // 連続ダウンロードを安定させるための待機
+            await new Promise(resolve => setTimeout(resolve, 300));
+          }
+
+          setShowSplitPreview(false); // 成功したらプレビューを閉じる
+          setSuccessMsg(`${entries.length}個のファイルのダウンロードを開始しました。（※ブラウザで複数ファイルのダウンロード許可が必要な場合があります）`);
+        } catch (err) {
+          setError("分割エクスポート中にエラーが発生しました: " + err.message);
+        } finally {
+          setIsSplitting(false);
+        }
+      };
+
+      // プレビューで最終的に生成されるファイル数を計算
+      const uniqueFilesCount = new Set(splitMappings.map(m => m.outputName.trim())).size;
+
+      return (
+        <div className="p-6">
+          <div className="max-w-5xl mx-auto space-y-6">
+            
+            {/* ヘッダー */}
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center gap-3">
+              <FileSpreadsheet className="w-8 h-8 text-blue-600" />
+              <h1 className="text-2xl font-bold text-gray-800">Excel統合・エリア分割ツール</h1>
+            </div>
+
+            {/* メイングリッド */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              
+              {/* 左カラム：ファイルアップロード */}
+              <div className="lg:col-span-1 bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col h-full">
+                <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                  <UploadCloud className="w-5 h-5 text-blue-500" />
+                  ファイルのアップロード
+                </h2>
+                
+                <div className="mb-4">
+                  <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 transition">
+                    <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                      <UploadCloud className="w-8 h-8 text-gray-400 mb-2" />
+                      <p className="text-sm text-gray-500 font-medium">クリックしてExcelを選択</p>
+                      <p className="text-xs text-gray-400 mt-1">複数選択可 (.xlsx, .xls)</p>
+                    </div>
+                    <input 
+                      type="file" 
+                      className="hidden" 
+                      multiple 
+                      accept=".xlsx, .xls"
+                      onChange={handleFileChange} 
+                    />
+                  </label>
+                </div>
+
+                {files.length > 0 && (
+                  <div className="flex-1 flex flex-col">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-sm text-gray-600 font-medium">結合する順番:</p>
+                      <button 
+                        onClick={clearAllFiles}
+                        className="text-xs text-red-600 hover:text-red-700 hover:bg-red-50 flex items-center gap-1 px-2 py-1 rounded transition border border-transparent hover:border-red-200"
+                      >
+                        <X className="w-3 h-3" /> すべてクリア
+                      </button>
+                    </div>
+                    <div className="flex-1 overflow-y-auto max-h-64 border rounded-md bg-gray-50 p-2 space-y-2 mb-4">
+                      {files.map((file, idx) => (
+                        <div key={idx} className="flex items-center justify-between bg-white p-2 rounded shadow-sm text-sm border">
+                          <span className="truncate flex-1 mr-2" title={file.name}>{file.name}</span>
+                          <div className="flex items-center gap-1">
+                            <button onClick={() => moveFile(idx, 'up')} disabled={idx === 0} className="p-1 text-gray-500 hover:text-blue-600 disabled:opacity-30">
+                              <ArrowUp className="w-4 h-4" />
+                            </button>
+                            <button onClick={() => moveFile(idx, 'down')} disabled={idx === files.length - 1} className="p-1 text-gray-500 hover:text-blue-600 disabled:opacity-30">
+                              <ArrowDown className="w-4 h-4" />
+                            </button>
+                            <button onClick={() => removeFile(idx)} className="p-1 text-red-400 hover:text-red-600 ml-1">
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <button 
+                      onClick={processFiles}
+                      disabled={loading || files.length === 0}
+                      className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-lg transition disabled:bg-gray-400 shadow-sm"
+                    >
+                      {loading ? <span className="animate-pulse">処理中...</span> : (
+                        files.length === 1 
+                          ? <><Play className="w-4 h-4" /> 読み込んで分割へ進む</>
+                          : <><Play className="w-4 h-4" /> 結合を実行</>
+                      )}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* 右カラム：結果表示領域 */}
+              <div className="lg:col-span-2 space-y-6">
+                
+                {error && (
+                  <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                    <p className="text-sm whitespace-pre-wrap">{error}</p>
+                  </div>
+                )}
+                
+                {successMsg && (
+                  <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg flex items-start gap-3">
+                    <CheckCircle2 className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1 flex items-center justify-between">
+                      <p className="text-sm">{successMsg}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* エクスポート アクションパネル */}
+                {mergedData.length > 0 && (
+                  <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col md:flex-row gap-6 animate-in fade-in duration-300">
+                    {/* 一括ダウンロード */}
+                    <div className="flex-1 flex flex-col">
+                      <h3 className="text-md font-semibold mb-2 text-gray-800 flex items-center gap-2">
+                        <Download className="w-5 h-5 text-green-600" />
+                        {files.length === 1 ? 'データのダウンロード' : '一括ダウンロード'}
+                      </h3>
+                      <p className="text-sm text-gray-600 mb-4 flex-1">
+                        {files.length === 1 ? '読み込んだデータをそのままExcelファイルとして保存します。' : 'すべてのデータを1つのExcelファイルにまとめて保存します。'}
+                      </p>
+                      <button 
+                        onClick={exportExcel}
+                        className="w-full flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2.5 rounded-lg text-sm transition shadow-sm font-medium"
+                      >
+                        <Download className="w-4 h-4" /> {files.length === 1 ? 'データをダウンロード' : '統合ファイルをダウンロード'}
+                      </button>
+                    </div>
+                    
+                    <div className="hidden md:block w-px bg-gray-200"></div>
+                    
+                    {/* 分割ダウンロード */}
+                    <div className="flex-1 flex flex-col">
+                      <h3 className="text-md font-semibold mb-2 text-gray-800 flex items-center gap-2">
+                        <FileArchive className="w-5 h-5 text-blue-600" />
+                        列の値で分割してダウンロード
+                      </h3>
+                      <p className="text-sm text-gray-600 mb-4">指定した列の値ごとにシートを分割し、複数のExcelファイルとして保存します。</p>
+                      
+                      <div className="flex flex-col gap-3 mt-auto">
+                        <select 
+                          value={selectedSplitCol}
+                          onChange={(e) => setSelectedSplitCol(e.target.value)}
+                          className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-blue-500 focus:border-blue-500 bg-white"
+                        >
+                          {splitCandidates.map(col => (
+                            <option key={col.index} value={col.index}>{col.name}</option>
+                          ))}
+                          {splitCandidates.length === 0 && (
+                            <option value="">分割可能な列がありません</option>
+                          )}
+                        </select>
+                        
+                        <button 
+                          onClick={prepareSplit}
+                          disabled={splitCandidates.length === 0}
+                          className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg text-sm transition shadow-sm font-medium disabled:bg-gray-400"
+                        >
+                          <Eye className="w-4 h-4" /> 分割の確認と設定
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 結合データプレビュー */}
+                {mergedData.length > 0 && (
+                  <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 animate-in fade-in duration-500">
+                    <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                      <TableProperties className="w-5 h-5 text-green-500" />
+                      データプレビュー <span className="text-xs font-normal text-gray-500 ml-2">(最初の100行を表示)</span>
+                    </h2>
+                    <div className="overflow-x-auto overflow-y-auto max-h-[500px] rounded-lg border border-gray-200">
+                      <table className="w-full text-sm text-left whitespace-nowrap">
+                        <thead className="text-gray-700 sticky top-0 z-10 shadow-sm">
+                          <tr>
+                            {mergedHeaders.map((h, i) => (
+                              <th key={i} className="px-4 py-2 border-b bg-gray-100 font-medium">{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200 bg-white">
+                          {mergedData.slice(0, 100).map((row, rIdx) => (
+                            <tr key={rIdx} className="hover:bg-gray-50 transition-colors">
+                              {row.map((cell, cIdx) => (
+                                <td key={cIdx} className="px-4 py-1.5 text-gray-700 truncate max-w-xs">
+                                  {cell !== null && cell !== undefined ? String(cell) : ''}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* 分割プレビュー・設定モーダル */}
+          {showSplitPreview && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-xl shadow-xl max-w-3xl w-full flex flex-col max-h-[90vh] overflow-hidden">
+                <div className="p-6 border-b border-gray-100 bg-gray-50/50">
+                  <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                    <FileArchive className="w-6 h-6 text-blue-500" />
+                    生成するファイルの確認
+                  </h3>
+                  <p className="text-sm text-gray-600 mt-2 leading-relaxed">
+                    以下のファイルが個別のExcelファイルとして生成されます。<br/>
+                    統合したいデータがある場合、プルダウンから<strong>同じ出力ファイル名</strong>を選択してください。（表記ゆれなどを1つのファイルにまとめられます）
+                  </p>
+                  <div className="mt-3 inline-block bg-blue-50 text-blue-800 text-sm px-3 py-1.5 rounded-lg font-medium border border-blue-100">
+                    最終的に生成されるファイル数: <span className="text-lg">{uniqueFilesCount}</span> 個
+                  </div>
+                </div>
+                
+                <div className="p-0 overflow-y-auto bg-gray-50 flex-1">
+                  <table className="w-full text-sm text-left">
+                    <thead className="bg-gray-200 text-gray-700 sticky top-0 shadow-sm">
+                      <tr>
+                        <th className="px-6 py-3 border-b font-medium">データの値 (元の値)</th>
+                        <th className="px-6 py-3 border-b w-32 text-right font-medium">データ件数</th>
+                        <th className="px-6 py-3 border-b w-1/2 font-medium">出力ファイル名 (.xlsx)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 bg-white">
+                      {splitMappings.map((mapping, idx) => (
+                        <tr key={idx} className="hover:bg-blue-50/50 transition-colors">
+                          <td className="px-6 py-3 text-gray-800 font-medium truncate max-w-[200px]" title={mapping.originalValue}>
+                            {mapping.originalValue}
+                          </td>
+                          <td className="px-6 py-3 text-gray-500 text-right">
+                            {mapping.count} <span className="text-xs text-gray-400">件</span>
+                          </td>
+                          <td className="px-6 py-2">
+                            <select 
+                              value={mapping.outputName}
+                              onChange={(e) => updateOutputName(idx, e.target.value)}
+                              className="w-full border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white transition-shadow cursor-pointer"
+                            >
+                              {availableSplitOptions.map((opt, i) => (
+                                <option key={i} value={opt}>{opt}</option>
+                              ))}
+                            </select>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="p-5 border-t border-gray-100 flex justify-end gap-3 bg-white">
+                  <button onClick={() => setShowSplitPreview(false)} className="px-5 py-2.5 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition">
+                    キャンセル
+                  </button>
+                  <button 
+                    onClick={executeSplitExport} 
+                    disabled={isSplitting}
+                    className="px-5 py-2.5 text-white bg-blue-600 hover:bg-blue-700 rounded-lg font-medium transition flex items-center gap-2 shadow-sm disabled:bg-gray-400"
+                  >
+                    {isSplitting ? <span className="animate-pulse">生成中...</span> : <><Download className="w-5 h-5" /> 複数のファイルをダウンロード</>}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 以下、既存のノイズ確認・ヘッダー不一致確認モーダル */}
+          {noiseCandidates.length > 0 && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full flex flex-col max-h-[90vh] overflow-hidden">
+                <div className="p-6 border-b border-gray-100 bg-gray-50/50">
+                  <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                    <AlertCircle className="w-6 h-6 text-amber-500" />
+                    ノイズデータの確認
+                  </h3>
+                  <p className="text-sm text-gray-600 mt-2">
+                    ヘッダー（列名）がなく、データがわずかしか入力されていない列が検出されました。<br/>
+                    これらが残っていると列数が合わずエラーになる可能性があります。ノイズとして除外しますか？
+                  </p>
+                </div>
+                
+                <div className="p-6 overflow-y-auto bg-gray-50 flex-1">
+                  <div className="border rounded-lg bg-white overflow-hidden shadow-sm">
+                    <table className="w-full text-sm text-left">
+                      <thead className="bg-gray-100 text-gray-700">
+                        <tr>
+                          <th className="px-4 py-3 border-b">ファイル名</th>
+                          <th className="px-4 py-3 border-b">入力されている値</th>
+                          <th className="px-4 py-3 border-b text-center w-24">除外する</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {noiseCandidates.map((noise, idx) => (
+                          <tr key={idx} className={noise.exclude ? 'bg-amber-50/30' : ''}>
+                            <td className="px-4 py-3 text-gray-700 truncate max-w-[150px]" title={noise.fileName}>{noise.fileName}</td>
+                            <td className="px-4 py-3 text-gray-600">
+                              {noise.values.map((v, i) => (
+                                <span key={i} className="inline-block bg-gray-100 px-2 py-1 rounded border text-xs mr-1 mb-1">{v}</span>
+                              ))}
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <input 
+                                type="checkbox" 
+                                checked={noise.exclude}
+                                onChange={() => toggleNoiseExclude(idx)}
+                                className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
+                              />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="p-5 border-t border-gray-100 flex justify-end gap-3 bg-white">
+                  <button onClick={cancelMerge} className="px-5 py-2 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition">
+                    キャンセル
+                  </button>
+                  <button onClick={continueMerge} className="px-5 py-2 text-white bg-blue-600 hover:bg-blue-700 rounded-lg font-medium transition flex items-center gap-2 shadow-sm">
+                    <CheckCircle2 className="w-4 h-4" /> 適用して次へ
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {headerConflicts.length > 0 && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full flex flex-col max-h-[90vh] overflow-hidden">
+                <div className="p-6 border-b border-gray-100 bg-gray-50/50">
+                  <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                    <AlertCircle className="w-6 h-6 text-blue-500" />
+                    ヘッダー（列名）の不一致確認
+                  </h3>
+                  <p className="text-sm text-gray-600 mt-2">
+                    ファイル間で列名や列の有無が異なっている箇所が見つかりました。<br/>
+                    これらを「同じ列として結合する」か「ノイズとして除外する」か、また「結合後の列名」を選択してください。
+                  </p>
+                </div>
+                
+                <div className="p-6 overflow-y-auto bg-gray-50 flex-1 space-y-6">
+                  {headerConflicts.map((conflict, cIdx) => (
+                    <div key={cIdx} className="border rounded-lg bg-white overflow-hidden shadow-sm">
+                      <div className="bg-blue-50 px-4 py-3 border-b flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <h4 className="font-semibold text-blue-900 whitespace-nowrap">
+                          【{conflict.colIndex + 1} 列目】のデータ
+                        </h4>
+                        <div className="flex items-center gap-2 text-sm">
+                          <label className="font-medium text-blue-800 whitespace-nowrap">結合後の列名:</label>
+                          <select 
+                            value={conflict.selectedHeader}
+                            onChange={(e) => updateConflictHeader(cIdx, e.target.value)}
+                            className="border-blue-200 rounded p-1.5 text-sm focus:ring-blue-500 focus:border-blue-500 bg-white min-w-[150px]"
+                          >
+                            {conflict.originalNames.map((name, i) => (
+                              <option key={i} value={name}>{name || '(空欄)'}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                      
+                      <table className="w-full text-sm text-left">
+                        <thead className="bg-gray-50 text-gray-600">
+                          <tr>
+                            <th className="px-4 py-2 border-b w-1/3">ファイル名</th>
+                            <th className="px-4 py-2 border-b w-1/3">元の列名</th>
+                            <th className="px-4 py-2 border-b w-1/3 text-center">扱い</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {conflict.fileHeaders.map((fh, fhIdx) => (
+                            <tr key={fhIdx} className={conflict.actions[fh.fileIndex] === 'ignore' ? 'bg-gray-50 opacity-60' : ''}>
+                              <td className="px-4 py-2 text-gray-800 truncate max-w-[200px]" title={fh.fileName}>{fh.fileName}</td>
+                              <td className="px-4 py-2 text-gray-600 font-medium">
+                                {fh.headerName || <span className="text-gray-400 italic font-normal">(空欄・データなし)</span>}
+                              </td>
+                              <td className="px-4 py-2 text-center">
+                                <select
+                                  value={conflict.actions[fh.fileIndex]}
+                                  onChange={(e) => updateConflictAction(cIdx, fh.fileIndex, e.target.value)}
+                                  className="border-gray-300 rounded text-sm w-full p-1.5"
+                                >
+                                  <option value="merge">✓ 同じ列として結合</option>
+                                  <option value="ignore">✕ 除外する（ノイズ）</option>
+                                </select>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="p-5 border-t border-gray-100 flex justify-end gap-3 bg-white">
+                  <button onClick={cancelHeaderConflicts} className="px-5 py-2 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition">
+                    キャンセル
+                  </button>
+                  <button onClick={confirmHeaderConflicts} className="px-5 py-2 text-white bg-blue-600 hover:bg-blue-700 rounded-lg font-medium transition flex items-center gap-2 shadow-sm">
+                    <CheckCircle2 className="w-4 h-4" /> 適用して次へ
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 欠陥データ修復モーダル */}
+          {defectSummary && pendingDefectsData && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-xl shadow-xl max-w-5xl w-full flex flex-col max-h-[90vh] overflow-hidden">
+                <div className="p-6 border-b border-red-100 bg-red-50/50">
+                  <h3 className="text-xl font-bold text-red-800 flex items-center gap-2">
+                    <AlertCircle className="w-6 h-6" />
+                    欠陥データ（エラー値）の確認と修復
+                  </h3>
+                  <p className="text-sm text-gray-700 mt-2">
+                    読み込んだデータの中に、Excelのエラー値が <strong>{defectSummary.count}件</strong> 検出されました。<br/>
+                    一覧から各エラーセルに対してどのように処理するか個別に選択してください。
+                  </p>
+                </div>
+
+                <div className="bg-white px-4 py-3 border-b flex flex-col sm:flex-row sm:items-center justify-between shadow-sm relative z-20 gap-3">
+                  <span className="text-sm text-gray-600 font-medium">全 {defectList.length} 件のエラーを一括で変更:</span>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => applyBulkDefectAction('empty')} className="text-xs px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded border border-gray-300 text-gray-700 transition">すべて空欄にする</button>
+                    <button onClick={() => applyBulkDefectAction('ignore')} className="text-xs px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded border border-gray-300 text-gray-700 transition">すべてそのまま</button>
+                  </div>
+                </div>
+                
+                <div className="p-0 overflow-y-auto bg-gray-50 flex-1">
+                  <table className="w-full text-sm text-left whitespace-nowrap">
+                    <thead className="bg-gray-200 text-gray-700 sticky top-0 z-10 shadow-sm">
+                      <tr>
+                        <th className="px-4 py-3 border-b font-medium max-w-[150px]">ファイル名</th>
+                        <th className="px-4 py-3 border-b font-medium max-w-[150px]">エラーのある列</th>
+                        <th className="px-4 py-3 border-b font-medium w-24 text-center">エラー値</th>
+                        <th className="px-4 py-3 border-b font-medium w-64">修復アクション</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 bg-white">
+                      {defectList.map((defect, idx) => (
+                        <tr key={defect.id} className="hover:bg-red-50/30 transition-colors">
+                          <td className="px-4 py-3 text-gray-600 truncate max-w-[150px]" title={defect.fileName}>
+                            {defect.fileName}
+                          </td>
+                          <td className="px-4 py-3 text-gray-800 font-medium truncate max-w-[150px]" title={defect.colName}>
+                            {defect.colName}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <span className="inline-block px-2 py-1 bg-red-100 text-red-700 font-mono text-xs rounded border border-red-200">
+                              {defect.errorValue}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2">
+                            <div className="flex items-center gap-2">
+                              <select 
+                                value={defect.action}
+                                onChange={(e) => {
+                                  const next = [...defectList];
+                                  next[idx].action = e.target.value;
+                                  setDefectList(next);
+                                }}
+                                className="border border-gray-300 rounded-md p-1.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-sm"
+                              >
+                                <option value="empty">空欄にする (推奨)</option>
+                                <option value="custom">任意の文字に置換</option>
+                                <option value="ignore">そのまま (修復しない)</option>
+                              </select>
+                              
+                              {defect.action === 'custom' && (
+                                <input 
+                                  type="text" 
+                                  value={defect.customValue}
+                                  onChange={(e) => {
+                                    const next = [...defectList];
+                                    next[idx].customValue = e.target.value;
+                                    setDefectList(next);
+                                  }}
+                                  placeholder="置換テキスト"
+                                  className="border border-gray-300 rounded-md px-2 py-1.5 text-sm w-32 focus:ring-blue-500 focus:border-blue-500"
+                                />
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="p-5 border-t border-gray-100 flex justify-end gap-3 bg-gray-50">
+                  <button onClick={cancelDefectRepair} className="px-5 py-2.5 text-gray-600 bg-white border border-gray-300 hover:bg-gray-100 rounded-lg font-medium transition">
+                    キャンセル
+                  </button>
+                  <button onClick={applyDefectRepair} className="px-5 py-2.5 text-white bg-blue-600 hover:bg-blue-700 rounded-lg font-medium transition flex items-center gap-2 shadow-sm">
+                    <CheckCircle2 className="w-5 h-5" /> 適用して次へ
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 空白セル確認モーダル */}
+          {blankCellsSummary && pendingBlanksData && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-xl shadow-xl max-w-5xl w-full flex flex-col max-h-[90vh] overflow-hidden">
+                <div className="p-6 border-b border-amber-100 bg-amber-50/50">
+                  <h3 className="text-xl font-bold text-amber-800 flex items-center gap-2">
+                    <AlertCircle className="w-6 h-6" />
+                    空白セルを含む行の確認
+                  </h3>
+                  <p className="text-sm text-gray-700 mt-2">
+                    データの中に、一部のセルが空欄（空白）となっている行が <strong>{blankCellsSummary.count}件</strong> 見つかりました。これらの行をどのように処理しますか？
+                  </p>
+                </div>
+                
+                <div className="p-6 overflow-y-auto bg-gray-50 flex-1 space-y-6">
+                  {/* プレビュー表示 */}
+                  <div className="bg-white border rounded-lg overflow-hidden shadow-sm">
+                    <div className="bg-gray-100 px-4 py-2 border-b text-sm font-semibold text-gray-700">
+                      対象の行（最大5件を表示）
+                    </div>
+                    <div className="overflow-x-auto max-h-[300px]">
+                      <table className="w-full text-sm text-left whitespace-nowrap">
+                        <thead className="bg-gray-50 text-gray-600 sticky top-0 z-10">
+                          <tr>
+                            {pendingBlanksData.finalExportHeaders.map((h, i) => (
+                              <th key={i} className="px-4 py-2 border-b font-medium">{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200">
+                          {blankCellsSummary.previewRows.map((item, idx) => {
+                            const noticeColIdx = pendingBlanksData.finalExportHeaders.findIndex(h => String(h).includes('その他特徴的な利用'));
+                            
+                            return (
+                              <tr key={idx} className="hover:bg-amber-50/30 transition-colors">
+                                {item.rowData.map((cell, cIdx) => {
+                                  const isBlank = cell === null || cell === undefined || String(cell).trim() === '';
+                                  // 「その他特徴的な利用」の列はエラーとしてハイライトしない
+                                  const isActionableBlank = isBlank && cIdx !== noticeColIdx;
+                                  
+                                  return (
+                                    <td key={cIdx} className={`px-4 py-2 text-gray-700 ${isActionableBlank ? 'bg-amber-100/50 border border-amber-200 border-dashed relative' : ''}`}>
+                                      {isActionableBlank ? <span className="text-amber-600 text-xs font-semibold">(空欄)</span> : String(cell !== null && cell !== undefined ? cell : '')}
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    {blankCellsSummary.count > blankCellsSummary.previewRows.length && (
+                      <div className="px-4 py-2 text-xs text-gray-500 bg-gray-50 text-center border-t">
+                        ... 他 {blankCellsSummary.count - blankCellsSummary.previewRows.length} 件
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-700 mb-3">処理方法の選択:</h4>
+                    <div className="space-y-3">
+                      <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition bg-white">
+                        <input 
+                          type="radio" 
+                          name="blankRepairMethod" 
+                          value="ignore" 
+                          checked={blankRepairMethod === 'ignore'}
+                          onChange={() => setBlankRepairMethod('ignore')}
+                          className="w-4 h-4 text-blue-600"
+                        />
+                        <span className="text-sm text-gray-800 font-medium">そのままにする（空欄のまま読み込む） <span className="text-xs text-green-600 ml-1 font-normal">(推奨)</span></span>
+                      </label>
+
+                      <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition bg-white">
+                        <input 
+                          type="radio" 
+                          name="blankRepairMethod" 
+                          value="fill" 
+                          checked={blankRepairMethod === 'fill'}
+                          onChange={() => setBlankRepairMethod('fill')}
+                          className="w-4 h-4 text-blue-600"
+                        />
+                        <div className="flex-1 flex flex-col sm:flex-row sm:items-center gap-2">
+                          <span className="text-sm text-gray-800">すべての空欄に特定の文字を埋める:</span>
+                          <input 
+                            type="text" 
+                            value={blankCustomText}
+                            onChange={(e) => {
+                              setBlankCustomText(e.target.value);
+                              setBlankRepairMethod('fill');
+                            }}
+                            onClick={() => setBlankRepairMethod('fill')}
+                            placeholder="例: 未入力"
+                            className="border border-gray-300 rounded px-2 py-1 text-sm flex-1 focus:ring-blue-500 focus:border-blue-500 sm:max-w-[200px]"
+                          />
+                        </div>
+                      </label>
+
+                      <label className="flex items-center gap-3 p-3 border border-red-200 rounded-lg cursor-pointer hover:bg-red-50 transition bg-white">
+                        <input 
+                          type="radio" 
+                          name="blankRepairMethod" 
+                          value="delete" 
+                          checked={blankRepairMethod === 'delete'}
+                          onChange={() => setBlankRepairMethod('delete')}
+                          className="w-4 h-4 text-red-600 focus:ring-red-500"
+                        />
+                        <span className="text-sm text-red-700 font-medium">空欄を含む行をすべて削除する（除外）</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-5 border-t border-gray-100 flex justify-end gap-3 bg-gray-50">
+                  <button onClick={cancelBlankRepair} className="px-5 py-2 text-gray-600 bg-white border border-gray-300 hover:bg-gray-100 rounded-lg font-medium transition">
+                    キャンセル
+                  </button>
+                  <button onClick={applyBlankRepair} className="px-5 py-2 text-white bg-blue-600 hover:bg-blue-700 rounded-lg font-medium transition flex items-center gap-2 shadow-sm">
+                    <CheckCircle2 className="w-4 h-4" /> 適用して完了
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
