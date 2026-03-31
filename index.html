@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Excel統合・エリア分割ツール</title>
+  <title>Excel統合ツール</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -561,6 +561,21 @@
         setDefectList(prev => prev.map(item => ({ ...item, action: actionType })));
       };
 
+      // ファイル名から期間を抽出するヘルパー関数
+      const extractPeriodFromFileName = (fileName) => {
+        if (!fileName) return '';
+        const nameWithoutExt = fileName.replace(/\.[^/.]+$/, "");
+        
+        // 「期間」という文字が含まれている場合、最初の文字から「期間」までを抽出
+        const periodIndex = nameWithoutExt.indexOf('期間');
+        if (periodIndex !== -1) {
+          return nameWithoutExt.substring(0, periodIndex + 2); // 「期」「間」の2文字を含める
+        }
+
+        // 含まれていない場合は拡張子を除いたファイル名をそのまま返す
+        return nameWithoutExt;
+      };
+
       // 3. 結合実行
       const executeFinalMerge = (filesData, baseHeaders, maxCols, resolvedConflicts) => {
         setLoading(true);
@@ -576,6 +591,7 @@
 
           filesData.forEach((fileData, fIdx) => {
             const { file, sheetData } = fileData;
+            const periodValue = extractPeriodFromFileName(file.name);
             
             for (let r = 1; r < sheetData.length; r++) {
               const row = sheetData[r];
@@ -601,7 +617,7 @@
                 if (isSingleFile) {
                   allData.push([...paddedRow]);
                 } else {
-                  allData.push([file.name, ...paddedRow]);
+                  allData.push([periodValue, ...paddedRow]);
                 }
               }
             }
@@ -764,7 +780,7 @@
             {/* ヘッダー */}
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center gap-3">
               <FileSpreadsheet className="w-8 h-8 text-blue-600" />
-              <h1 className="text-2xl font-bold text-gray-800">Excel統合・エリア分割ツール</h1>
+              <h1 className="text-2xl font-bold text-gray-800">Excel 統合ツール</h1>
             </div>
 
             {/* メイングリッド */}
